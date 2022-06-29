@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="papps-app" basedir=".">
+
+  <dirname property="build.basedir" file="${ant.file.papps-app}"/>
+  <property name="root.basedir" location="${build.basedir}/.."/>
+
+  <!-- Check required properties -->
+  <fail unless="app.type" message="Property 'app.type' must be defined before loading build-app.xml"/>
+  <fail message="Property 'atf.win3264.url' or 'atf.win32.url' or 'atf.win64.url' must be defined before loading build-app.xml">
+    <condition>
+      <and>
+        <equals arg1="${atf.win3264.url}" arg2=""/>
+        <equals arg1="${atf.win32.url}" arg2=""/>
+        <equals arg1="${atf.win64.url}" arg2=""/>
+      </and>
+    </condition>
+  </fail>
+
+  <!-- Import common build-type-${app.type}.xml and load properties -->
+  <import file="${build.basedir}\build-type-${app.type}.xml"/>
+  <property file="${build.basedir}\build-app.properties"/>
+
+  <target name="release.app" depends="init">
+    <randomstring property="app.buildid"/>
+    <echo message="Generated build id: ${app.buildid}"/>
+    <if>
+      <not><equals arg1="${atf.win3264.url}" arg2=""/></not>
+      <then>
+        <fail unless="atf.win3264.filename" message="Property 'atf.win3264.filename' must be defined with 'atf.win3264.url'"/>
+        <fail unless="atf.win3264.ext" message="Property 'atf.win3264.ext' must be defined with 'atf.win3264.url'"/>
+        <fail unless="atf.win3264.assertextract" message="Property 'atf.win3264.assertextract' must be defined with 'atf.win3264.url'"/>
+        <antcall target="release.arch">
+          <param name="atf.arch" value="win3264"/>
+          <param name="atf.filename" value="${atf.win3264.filename}"/>
+          <param name="atf.ext" value="${atf.win3264.ext}"/>
+          <param name="atf.url" value="${atf.win3264.url}"/>
+          <param name="atf.assertextract" value="${atf.win3264.assertextract}"/>
+        </antcall>
+        <echo file="${tmp.path}\${app.buildid}" append="false">${app.buildid}</echo>
+        <var name="innosetup.arch" value="x86 x64"/>
+      </then>
+    </if>
+    <if>
+      <not><equals arg1="${atf.win32.url}" arg2=""/></not>
+      <then>
+        <fail unless="atf.win32.filename" message="Property 'atf.win32.filename' must be defined with 'atf.win32.url'"/>
+        <fail unless="atf.win32.ext" message="Property 'atf.win32.ext' must be defined with 'atf.win32.url'"/>
+        <fail unless="atf.win32.assertextract" message="Property 'atf.win32.assertextract' must be defined with 'atf.win32.url'"/>
+        <antcall target="release.arch">
+          <param name="atf.arch" value="win32"/>
+          <param name="atf.filename" value="${atf.win32.filename}"/>
+          <param name="atf.ext" value="${atf.win32.ext}"/>
+          <param name="atf.url" value="${atf.win32.url}"/>
+          <param name="atf.assertextract" value="${atf.win32.assertextract}"/>
+          <param name="go.arch" value="386"/>
+        </antcall>
+        <echo file="${tmp.path}\${app.buildid}" append="false">${app.buildid}</echo>
+        <var name="innosetup.arch" value="x86 x64"/>
+      </then>
+    </if>
+    <if>
+      <not><equals arg1="${atf.win64.url}" arg2=""/></not>
+      <then>
+        <fail unless="atf.win64.filename" message="Property 'atf.win64.filename' must be defined with 'atf.win64.url'"/>
+        <fail unless="atf.win64.ext" message="Property 'atf.win64.ext' must be defined with 'atf.win64.url'"/>
+        <fail unless="atf.win64.assertextract" message="Property 'atf.win64.assertextract' must be defined with 'atf.win64.url'"/>
+        <antcall target="release.arch">
+          <param name="atf.arch" value="win64"/>
+          <param name="atf.filename" value="${atf.win64.filename}"/>
+          <param name="atf.ext" value="${atf.win64.ext}"/>
+          <param name="atf.url" value="${atf.win64.url}"/>
+          <param name="atf.assertextract" value="${atf.win64.assertextract}"/>
+          <param name="go.arch" value="amd64"/>
+        </antcall>
+        <echo file="${tmp.path}\${app.buildid}" append="false">${app.buildid}</echo>
+        <var name="innosetup.arch" value="x64"/>
+      </then>
+    </if>
+    <delete file="${tmp.path}\${app.buildid}"/>
+
+    <!-- Cleaning -->
+    <if>
+      <equals arg1="${debug}" arg2="false"/>
+      <then>
+        <delete dir="${build.path}"/>
+        <delete dir="${setup.path}"/>
+        <delete includeemptydirs="true">
+          <fileset dir="${tmp.path}" defaultexcludes="no">
+            <exclude name="version.dat"/>
+          </fileset>
+        </delete>
+      </then>
+    </if>
+  </target>
+
+  <target name="packaging">
+    <echo message="Packaging release..."/>
+    <if>
+      <not><equals arg1="${atf.win3264.url}" arg2=""/></not>
+      <then>
+        <property name="release.7z.filename" value="${papp.id}-${app.version}-${app.release}.7z"/>
+        <property name="release.setup.filename" value="${papp.id}-${app.version}-${app.release}-setup"/>
+      </then>
+      <else>
+        <property name="release.7z.filename" value="${papp.id}-${atf.arch}-${app.version}-${app.release}.7z"/>
+        <property name="release.setup.filename" value="${papp.id}-${atf.arch}-${app.version}-${app.release}-setup"/>
+      </else>
+    </if>
+
+    <!-- .7z release -->
+    <if>
+      <istrue value="${papp.out.7z}"/>
+      <then>
+        <echo message="Building 7z archive..."/>
+        <sevenzip src="${build.path}/*" dest="${release.path}\${release.7z.filename}" format="7z"/>
+      </then>
+    </if>
+
+    <!-- setup.exe release -->
+    <if>
+      <istrue value="${papp.out.exe}"/>
+      <then>
+        <echo message="Building setup..."/>
+        <copy todir="${setup.path}">
+          <fileset dir="${core.res.path}" defaultexcludes="no">
+            <include name="setup*"/>
+          </fileset>
+          <fileset dir="${res.path}" defaultexcludes="no">
+            <include name="setup*"/>
+            <include name="*.iss"/>
+            <include name="papp.ico"/>
+          </fileset>
+        </copy>
+        <condition property="setup.iss.path" value="${core.res.path}\setup.iss"><isfalse value="${papp.iss}"/></condition>
+        <condition property="setup.iss.path" value="${res.path}\setup.iss"><istrue value="${papp.iss}"/></condition>
+        <foreach target="issinc" param="issfile">
+          <fileset dir="${res.path}" casesensitive="yes">
+            <include name="*.iss"/>
+          </fileset>
+        </foreach>
+        <copy file="${setup.iss.path}" todir="${setup.path}" overwrite="true">
+          <filterset>
+            <filter token="ISS_COMPRESSION" value="${innosetup.comp}"/>
+            <filter token="ISS_ARCH" value="${innosetup.arch}"/>
+            <filter token="BIN_PATH" value="${bin.path}"/>
+            <filter token="APP_NAME" value="${app.name}"/>
+            <filter token="APP_HOMEPAGE" value="${app.homepage}"/>
+            <filter token="PAPP_ID" value="${papp.id}"/>
+            <filter token="PAPP_GUID" value="${papp.guid}"/>
+            <filter token="PAPP_VERSION" value="${app.version}-${app.release}"/>
+            <filter token="PAPP_URL" value="${papp.url}"/>
+            <filter token="PAPP_FOLDER" value="${papp.folder}"/>
+            <filter token="PAPP_PUBLISHER" value="${publisher}"/>
+          </filterset>
+        </copy>
+        <iscc dir="${setup.path}" output="${release.path}" filename="${release.setup.filename}"/>
+      </then>
+    </if>
+  </target>
+
+  <target name="issinc">
+    <copy file="${issfile}" todir="${setup.path}" overwrite="true">
+      <filterset>
+        <filter token="ISS_COMPRESSION" value="${innosetup.comp}"/>
+        <filter token="ISS_ARCH" value="${innosetup.arch}"/>
+        <filter token="BIN_PATH" value="${bin.path}"/>
+        <filter token="APP_NAME" value="${app.name}"/>
+        <filter token="APP_HOMEPAGE" value="${app.homepage}"/>
+        <filter token="PAPP_ID" value="${papp.id}"/>
+        <filter token="PAPP_GUID" value="${papp.guid}"/>
+        <filter token="PAPP_VERSION" value="${app.version}-${app.release}"/>
+        <filter token="PAPP_URL" value="${papp.url}"/>
+        <filter token="PAPP_FOLDER" value="${papp.folder}"/>
+        <filter token="PAPP_PUBLISHER" value="${publisher}"/>
+      </filterset>
+    </copy>
+  </target>
+
+  <target name="prepare"/>
+  <target name="finalize"/>
+
+</project>

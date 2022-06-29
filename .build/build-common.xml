@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="papps-common" basedir=".">
+
+  <tstamp><format property="current.date" pattern="yyyyMMdd"/></tstamp>
+  <tstamp><format property="build.date" pattern="yyyy/MM/dd HH:mm:ss"/></tstamp>
+
+  <!-- Check required properties -->
+  <fail unless="app.basedir" message="Property 'app.basedir' must be defined before loading build-common.xml"/>
+  <fail unless="app.release" message="Property 'app.release' must be defined before loading build-common.xml"/>
+  <fail unless="core.basedir" message="Property 'core.basedir' must be defined before loading build-common.xml"/>
+
+  <!-- Load properties -->
+  <dirname property="build.basedir" file="${ant.file.papps-common}"/>
+  <property name="root.basedir" location="${build.basedir}/.."/>
+  <property file="${build.basedir}\build-common.properties"/>
+  <property environment="env"/>
+
+  <!-- Core properties -->
+  <condition property="core.basedir" value="${root.basedir}"><not><isset property="core.basedir"/></not></condition>
+  <property name="core.lib.path" value="${core.basedir}\${bin.dir}\lib"/>
+  <property name="core.res.path" value="${core.basedir}\${res.dir}"/>
+
+  <!-- Base Properties -->
+  <property name="res.path" value="${app.basedir}\${res.dir}"/>
+  <property name="bin.path" value="${app.basedir}\${bin.dir}"/>
+  <property name="build.path" value="${bin.path}\build"/>
+  <property name="setup.path" location="${bin.path}\setup"/>
+  <property name="release.path" value="${bin.path}\release"/>
+  <property name="tmp.path" value="${bin.path}\tmp"/>
+
+  <!-- Functions -->
+  <scriptdef name="randomstring" language="javascript">
+    <attribute name="property"/>
+    <![CDATA[
+    var SecureRandom = java.security.SecureRandom;
+    var BigInteger = java.math.BigInteger;
+    project.setProperty(attributes.get("property"), new BigInteger(130, new SecureRandom()).toString(32));
+    ]]>
+  </scriptdef>
+
+  <macrodef name="coreversion">
+    <attribute name="path"/>
+    <attribute name="prop"/>
+    <sequential>
+      <loadfile property="gomod" srcfile="@{path}/go.mod"/>
+      <for param="line" list="${gomod}" delimiter="${line.separator}">
+        <sequential>
+          <if>
+            <contains string="@{line}" substring="${go.package}"/>
+            <then>
+              <propertyregex property="@{prop}" input="@{line}" regexp="\sv(.*)" select="\1"/>
+              <echo message="Portapps version found: ${@{prop}}"/>
+            </then>
+          </if>
+        </sequential>
+      </for>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="assertdir">
+    <attribute name="dir"/>
+    <sequential>
+      <fail message="Directory '@{dir}' does not exist">
+        <condition><not><available file="@{dir}" type="dir"/></not></condition>
+      </fail>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="assertfile">
+    <attribute name="file"/>
+    <sequential>
+      <fail message="File '@{file}' does not exist">
+        <condition><not><available file="@{file}" type="file"/></not></condition>
+      </fail>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="assertprop">
+    <attribute name="property"/>
+    <sequential>
+      <fail message="Property '@{property}' not defined">
+        <condition><not><isset property="@{property}"/></not></condition>
+      </fail>
+    </sequential>
+  </macrodef>
+
+  <macrodef name="setelectronuserdata">
+    <attribute name="file"/>
+    <attribute name="path"/>
+    <attribute name="search"/>
+    <attribute name="replace"/>
+    <sequential>
+      <antcall target="load.lib.asar"/>
+
+      <echo message="Extracting electron.asar..."/>
+      <exec executable="asar.cmd" failonerror="true" dir="@{path}\resources">
+        <arg value="extract"/>
+        <arg value="electron.asar"/>
+        <arg value="electron.unpacked"/>
+      </exec>
+
+      <echo message="Replacing userData in electron.asar..."/>
+      <assertfile file="@{path}\resources\electron.unpacked\@{file}"/>
+      <replace file="@{path}\resources\electron.unpacked\@{file}" failOnNoReplacements="true">
+        <replacefilter token="@{search}" value="@{replace}"/>
+      </replace>
+
+      <echo message="Packaging electron.asar..."/>
+      <exec executable="asar.cmd" failonerror="true" dir="@{path}\resources">
+        <arg value="pack"/>
+        <arg value="electron.unpacked"/>
+        <arg value="electron.asar"/>
+      </exec>
+      <delete dir="@{path}\resources\electron.unpacked"/>
+    </sequential>
+  </macrodef>
+
+  <!-- Targets -->
+  <target name="start">
+    <echo message="*** Start building ${app}"/>
+    <echo message="* ID       : ${papp.id} "/>
+    <echo message="* Name     : ${papp.name} "/>
+    <echo message="* Desc     : ${papp.desc} "/>
+    <echo message="* Atf arch : ${atf.arch} "/>
+    <echo message="* Atf url  : ${atf.url} "/>
+    <echo message="* GOARCH   : ${go.arch} "/>
+  </target>
+
+  <target name="init" depends="load.libs">
+    <mkdir dir="${bin.path}"/>
+    <mkdir dir="${core.lib.path}"/>
+    <delete dir="${build.path}"/>
+    <mkdir dir="${build.path}"/>
+    <delete dir="${setup.path}"/>
+    <mkdir dir="${setup.path}"/>
+  </target>
+
+  <!-- Libs -->
+  <import file="${build.basedir}\libs\antcontrib.xml"/>
+  <import file="${build.basedir}\libs\wget.xml"/>
+  <import file="${build.basedir}\libs\7zip.xml"/>
+  <import file="${build.basedir}\libs\rcedit.xml"/>
+  <import file="${build.basedir}\libs\lessmsi.xml"/>
+  <import file="${build.basedir}\libs\innoextract.xml"/>
+  <import file="${build.basedir}\libs\innosetup.xml"/>
+  <import file="${build.basedir}\libs\upx.xml"/>
+  <import file="${build.basedir}\libs\hashmyfiles.xml"/>
+  <import file="${build.basedir}\libs\asar.xml"/>
+  <import file="${build.basedir}\libs\lessmsi.xml"/>
+
+  <target name="load.libs" unless="is.lib.loaded" depends="
+      load.lib.antcontrib,
+      load.lib.wget,
+      load.lib.7za,
+      load.lib.7z,
+      load.lib.rcedit,
+      load.lib.lessmsi,
+      load.lib.innoextract,
+      load.lib.innosetup,
+      load.lib.upx,
+      load.lib.hashmyfiles">
+    <var name="is.lib.loaded" value="true"/>
+  </target>
+
+  <target name="clear">
+    <if>
+      <not><available file="${tmp.path}\${app.buildid}" type="file"/></not>
+      <then><delete dir="${release.path}"/></then>
+    </if>
+    <mkdir dir="${release.path}"/>
+  </target>
+
+  <target name="filterset">
+    <coreversion path="${app.basedir}" prop="papp.coreversion"/>
+    <propertyregex property="portapps.major" input="${papp.coreversion}" regexp="(\d{1,3}).(\d{1,3}).(\d{1,3})" select="\1"/>
+    <propertyregex property="portapps.minor" input="${papp.coreversion}" regexp="(\d{1,3}).(\d{1,3}).(\d{1,3})" select="\2"/>
+    <propertyregex property="portapps.patch" input="${papp.coreversion}" regexp="(\d{1,3}).(\d{1,3}).(\d{1,3})" select="\3"/>
+    <filterset id="filterset.app">
+      <filter token="APP_ID" value="${papp.id}"/>
+      <filter token="APP_NAME" value="${papp.name}"/>
+      <filter token="APP_DESC" value="${papp.desc}"/>
+      <filter token="APP_VERSION" value="${app.version}"/>
+      <filter token="APP_RELEASE" value="${app.release}"/>
+      <filter token="APP_COPYRIGHT" value="${papp.url}"/>
+      <filter token="APP_PORTAPPS_MAJOR" value="${portapps.major}"/>
+      <filter token="APP_PORTAPPS_MINOR" value="${portapps.minor}"/>
+      <filter token="APP_PORTAPPS_PATCH" value="${portapps.patch}"/>
+    </filterset>
+    <echo message="APP_ID             : ${papp.id}"/>
+    <echo message="APP_NAME           : ${papp.name}"/>
+    <echo message="APP_DESC           : ${papp.desc}"/>
+    <echo message="APP_VERSION        : ${app.version}"/>
+    <echo message="APP_RELEASE        : ${app.release}"/>
+    <echo message="APP_COPYRIGHT      : ${papp.url}"/>
+    <echo message="APP_PORTAPPS_MAJOR : ${portapps.major}"/>
+    <echo message="APP_PORTAPPS_MINOR : ${portapps.minor}"/>
+    <echo message="APP_PORTAPPS_PATCH : ${portapps.patch}"/>
+  </target>
+
+  <target name="goversion" description="Go version">
+    <exec executable="go" failonerror="true" dir="${app.basedir}">
+      <env key="GO111MODULE" value="${go.module}"/>
+      <env key="GOPROXY" value="${go.proxy}"/>
+      <arg value="version"/>
+    </exec>
+  </target>
+
+  <target name="goenv" description="Go environment information">
+    <exec executable="go" failonerror="true" dir="${app.basedir}">
+      <env key="GO111MODULE" value="${go.module}"/>
+      <env key="GOPROXY" value="${go.proxy}"/>
+      <arg value="env"/>
+    </exec>
+  </target>
+
+  <target name="gomod" description="Download Go modules">
+    <exec executable="go" failonerror="true" dir="${app.basedir}">
+      <env key="GO111MODULE" value="${go.module}"/>
+      <env key="GOPROXY" value="${go.proxy}"/>
+      <arg value="mod"/>
+      <arg value="download"/>
+    </exec>
+  </target>
+
+  <target name="gogenerate" description="Go generate">
+    <copy file="${core.res.path}/versioninfo.json" todir="${app.basedir}" overwrite="true">
+      <filterset refid="filterset.app"/>
+    </copy>
+    <exec executable="go" failonerror="true" dir="${app.basedir}">
+      <env key="GO111MODULE" value="${go.module}"/>
+      <env key="GOPROXY" value="${go.proxy}"/>
+      <env key="GOARCH" value="${go.arch}"/>
+      <arg value="generate"/>
+      <arg value="-v"/>
+    </exec>
+  </target>
+
+  <target name="build" depends="goversion, goenv, gomod, gogenerate">
+    <!-- GO build -->
+    <delete>
+      <fileset dir="${tmp.path}" includes="*_upx.exe" defaultexcludes="no"/>
+    </delete>
+    <if>
+      <equals arg1="${atf.arch}" arg2="win3264"/>
+      <then>
+        <delete file="${tmp.path}\${papp.id}-win32.exe"/>
+        <exec executable="go" failonerror="true" dir="${app.basedir}">
+          <env key="GO111MODULE" value="${go.module}"/>
+          <env key="GOPROXY" value="${go.proxy}"/>
+          <env key="GOARCH" value="386"/>
+          <env key="CGO_ENABLED" value="${go.cgo}"/>
+          <arg value="build"/>
+          <arg value="-o"/>
+          <arg value="${tmp.path}\${papp.id}-win32.exe"/>
+          <arg value="-v"/>
+          <arg value="-ldflags"/>
+          <arg value="${go.ldflags}"/>
+        </exec>
+        <assertfile file="${tmp.path}\${papp.id}-win32.exe"/>
+        <delete file="${tmp.path}\${papp.id}-win64.exe"/>
+        <exec executable="go" failonerror="true" dir="${app.basedir}">
+          <env key="GO111MODULE" value="${go.module}"/>
+          <env key="GOPROXY" value="${go.proxy}"/>
+          <env key="GOARCH" value="amd64"/>
+          <env key="CGO_ENABLED" value="${go.cgo}"/>
+          <arg value="build"/>
+          <arg value="-o"/>
+          <arg value="${tmp.path}\${papp.id}-win64.exe"/>
+          <arg value="-v"/>
+          <arg value="-ldflags"/>
+          <arg value="${go.ldflags}"/>
+        </exec>
+        <assertfile file="${tmp.path}\${papp.id}-win64.exe"/>
+        <if>
+          <and>
+            <equals arg1="${debug}" arg2="false"/>
+            <equals arg1="${papp.upx}" arg2="true"/>
+          </and>
+          <then>
+            <echo message="Compressing executables with UPX..."/>
+            <upx arch="win32" dir="${app.basedir}">
+              <args>
+                <arg line="${upx.args}"/>
+                <arg value="${tmp.path}\${papp.id}-win32.exe"/>
+                <arg value="-o"/>
+                <arg value="${tmp.path}\${papp.id}-win32_upx.exe"/>
+              </args>
+            </upx>
+            <assertfile file="${tmp.path}\${papp.id}-win32_upx.exe"/>
+            <move file="${tmp.path}\${papp.id}-win32_upx.exe" tofile="${tmp.path}\${papp.id}-win32.exe"/>
+            <upx arch="win64" dir="${app.basedir}">
+              <args>
+                <arg line="${upx.args}"/>
+                <arg value="${tmp.path}\${papp.id}-win64.exe"/>
+                <arg value="-o"/>
+                <arg value="${tmp.path}\${papp.id}-win64_upx.exe"/>
+              </args>
+            </upx>
+            <assertfile file="${tmp.path}\${papp.id}-win64_upx.exe"/>
+            <move file="${tmp.path}\${papp.id}-win64_upx.exe" tofile="${tmp.path}\${papp.id}-win64.exe"/>
+          </then>
+        </if>
+      </then>
+      <else>
+        <delete file="${tmp.path}\${papp.id}.exe"/>
+        <exec executable="go" failonerror="true" dir="${app.basedir}">
+          <env key="GO111MODULE" value="${go.module}"/>
+          <env key="GOPROXY" value="${go.proxy}"/>
+          <env key="GOARCH" value="${go.arch}"/>
+          <env key="CGO_ENABLED" value="${go.cgo}"/>
+          <arg value="build"/>
+          <arg value="-o"/>
+          <arg value="${tmp.path}\${papp.id}.exe"/>
+          <arg value="-v"/>
+          <arg value="-ldflags"/>
+          <arg value="${go.ldflags}"/>
+        </exec>
+        <assertfile file="${tmp.path}\${papp.id}.exe"/>
+        <if>
+          <and>
+            <equals arg1="${debug}" arg2="false"/>
+            <equals arg1="${papp.upx}" arg2="true"/>
+          </and>
+          <then>
+            <echo message="Compressing executable with UPX..."/>
+            <upx arch="${atf.arch}" dir="${app.basedir}">
+              <args>
+                <arg line="${upx.args}"/>
+                <arg value="${tmp.path}\${papp.id}.exe"/>
+                <arg value="-o"/>
+                <arg value="${tmp.path}\${papp.id}_upx.exe"/>
+              </args>
+            </upx>
+            <assertfile file="${tmp.path}\${papp.id}_upx.exe"/>
+            <move file="${tmp.path}\${papp.id}_upx.exe" tofile="${tmp.path}\${papp.id}.exe"/>
+          </then>
+        </if>
+      </else>
+    </if>
+
+    <!-- Portapp JSON -->
+    <copy file="${core.res.path}\lightdesk.json" todir="${build.path}" overwrite="true">
+      <filterset>
+        <filter token="APP_ID" value="${papp.id}"/>
+        <filter token="APP_GUID" value="${papp.guid}"/>
+        <filter token="APP_NAME" value="${papp.name}"/>
+        <filter token="APP_VERSION" value="${app.version}"/>
+        <filter token="APP_RELEASE" value="${app.release}"/>
+        <filter token="APP_DATE" value="${build.date}"/>
+        <filter token="APP_URL" value="${papp.url}"/>
+        <filter token="APP_PUBLISHER" value="${publisher}"/>
+        <filter token="APP_PORTAPPS_VERSION" value="${papp.coreversion}"/>
+      </filterset>
+    </copy>
+  </target>
+
+</project>

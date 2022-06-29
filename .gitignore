@@ -1,0 +1,8 @@
+# Intellij
+/.idea
+/*.iml
+
+# Main
+/.dev
+/bin
+/res/*.pspimage
